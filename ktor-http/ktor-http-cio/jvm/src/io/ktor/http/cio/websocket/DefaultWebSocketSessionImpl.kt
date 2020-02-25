@@ -11,6 +11,7 @@ import io.ktor.utils.io.pool.*
 import kotlinx.atomicfu.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
+import java.lang.IllegalStateException
 import java.nio.*
 import kotlin.coroutines.*
 
@@ -92,11 +93,13 @@ class DefaultWebSocketSessionImpl(
         IncomingProcessorCoroutineName + Dispatchers.Unconfined
     ) {
         var last: BytePacketBuilder? = null
+        var closeFramePresented = false
         try {
             raw.incoming.consumeEach { frame ->
                 when (frame) {
                     is Frame.Close -> {
                         outgoing.send(Frame.Close(frame.readReason() ?: NORMAL_CLOSE))
+                        closeFramePresented = true
                         return@launch
                     }
                     is Frame.Pong -> pinger.value?.send(frame)
@@ -131,6 +134,10 @@ class DefaultWebSocketSessionImpl(
             ponger.close()
             last?.release()
             filtered.close()
+
+            if (!closeFramePresented) {
+                close(IllegalStateException("Connection was closed without close frame"))
+            }
         }
     }
 

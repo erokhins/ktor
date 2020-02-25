@@ -14,6 +14,7 @@ import io.ktor.utils.io.*
 import io.ktor.utils.io.jvm.javaio.*
 import io.ktor.utils.io.charsets.*
 import io.ktor.utils.io.core.*
+import kotlinx.io.*
 
 /**
  * Represents a test application request
@@ -58,7 +59,7 @@ class TestApplicationRequest constructor(
      * Request body channel
      */
     @Volatile
-    var bodyChannel: ByteReadChannel = ByteReadChannel.Empty
+    var bodyChannel: ByteReadChannel = ByteChannel()
 
     override val queryParameters by lazy(LazyThreadSafetyMode.NONE) { parseQueryString(queryString()) }
 

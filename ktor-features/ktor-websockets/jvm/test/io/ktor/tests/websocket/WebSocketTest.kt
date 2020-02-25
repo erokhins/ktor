@@ -162,6 +162,7 @@ class WebSocketTest {
             application.routing {
                 webSocket("/{p}") {
                     outgoing.send(Frame.Text(call.parameters["p"] ?: "null"))
+                    terminate() // We should terminate the socket to avoid waiting for response close.
                 }
             }
 

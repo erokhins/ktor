@@ -28,6 +28,7 @@ import java.util.*
 import java.util.concurrent.*
 import java.util.concurrent.CancellationException
 import kotlin.test.*
+import kotlin.test.Ignore
 
 @UseExperimental(WebSocketInternalAPI::class, ObsoleteCoroutinesApi::class)
 abstract class WebSocketEngineSuite<TEngine : ApplicationEngine, TConfiguration : ApplicationEngine.Configuration>(
@@ -39,6 +40,218 @@ abstract class WebSocketEngineSuite<TEngine : ApplicationEngine, TConfiguration 
     override fun features(application: Application, routingConfigurer: Routing.() -> Unit) {
         application.install(WebSockets)
         super.features(application, routingConfigurer)
+    }
+
+    @Test
+    fun testWebSocketDisconnectDuringConsuming() {
+        val closeReasonJob = Job()
+        val contextJob = Job()
+
+        createAndStartServer {
+            webSocket("/") {
+                coroutineContext[Job]!!.invokeOnCompletion {
+                    contextJob.complete()
+                }
+
+                launch {
+                    try {
+                        closeReason.await()
+                    } finally {
+                        closeReasonJob.complete()
+                    }
+                }
+
+                incoming.consumeEach {}
+            }
+        }
+
+        async {
+            socket {
+                negotiateHttpWebSocket()
+                shutdownInput()
+                delay(100)
+            }
+        }
+
+        runBlocking {
+            withTimeout(2000) {
+                closeReasonJob.join()
+                contextJob.join()
+            }
+        }
+    }
+
+    @Test
+    fun testWebSocketDisconnectDuringSending() = runBlocking {
+        val closeReasonJob = Job()
+        val contextJob = Job()
+
+        createAndStartServer {
+            webSocket("/") {
+                coroutineContext[Job]!!.invokeOnCompletion {
+                    contextJob.complete()
+                }
+
+                launch {
+                    try {
+                        closeReason.await()
+                    } finally {
+                        closeReasonJob.complete()
+                    }
+                }
+
+                while (true) {
+                    send(Frame.Text("a".repeat(2000)))
+                    delay(100)
+                }
+            }
+        }
+
+        async {
+            socket {
+                negotiateHttpWebSocket()
+                shutdownInput()
+                delay(100)
+            }
+        }
+
+        runBlocking {
+            withTimeout(2000) {
+                closeReasonJob.join()
+                contextJob.join()
+            }
+        }
+    }
+
+    @Test
+    fun testWebSocketDisconnectDuringDowntime() {
+        val closeReasonJob = Job()
+        val contextJob = Job()
+
+        createAndStartServer {
+            webSocket("/") {
+                coroutineContext[Job]!!.invokeOnCompletion {
+                    contextJob.complete()
+                }
+
+                launch {
+                    try {
+                        closeReason.await()
+                    } finally {
+                        closeReasonJob.complete()
+                    }
+                }
+
+                delay(10000)
+            }
+        }
+
+        async {
+            socket {
+                negotiateHttpWebSocket()
+                shutdownInput()
+                delay(100)
+            }
+        }
+
+        runBlocking {
+            withTimeout(2000) {
+                closeReasonJob.join()
+                contextJob.join()
+            }
+        }
+    }
+
+    @Test
+    fun testRawWebSocketDisconnectDuringConsuming() {
+        val contextJob = Job()
+
+        createAndStartServer {
+            webSocketRaw("/") {
+                coroutineContext[Job]!!.invokeOnCompletion {
+                    contextJob.complete()
+                }
+
+                incoming.consumeEach {}
+            }
+        }
+
+        async {
+            socket {
+                negotiateHttpWebSocket()
+                shutdownInput()
+                delay(100)
+            }
+        }
+
+        runBlocking {
+            withTimeout(2000) {
+                contextJob.join()
+            }
+        }
+    }
+
+    @Test
+    fun testRawWebSocketDisconnectDuringSending() = runBlocking {
+        val contextJob = Job()
+
+        createAndStartServer {
+            webSocketRaw("/") {
+                coroutineContext[Job]!!.invokeOnCompletion {
+                    contextJob.complete()
+                }
+
+                while (true) {
+                    send(Frame.Text("a".repeat(2000)))
+                    delay(100)
+                }
+            }
+        }
+
+        async {
+            socket {
+                negotiateHttpWebSocket()
+                shutdownInput()
+                delay(100)
+            }
+        }
+
+        runBlocking {
+            withTimeout(2000) {
+                contextJob.join()
+            }
+        }
+    }
+
+    @Ignore("For now we assume that without any network interactions the socket will remain open.")
+    @Test
+    fun testRawWebSocketDisconnectDuringDowntime() {
+        val contextJob = Job()
+
+        createAndStartServer {
+            webSocketRaw("/") {
+                coroutineContext[Job]!!.invokeOnCompletion {
+                    contextJob.complete()
+                }
+
+                delay(10000)
+            }
+        }
+
+        async {
+            socket {
+                negotiateHttpWebSocket()
+                shutdownInput()
+                println("Input closed!")
+                delay(10000)
+            }
+        }
+
+        runBlocking {
+            withTimeout(2000) {
+                contextJob.join()
+            }
+        }
     }
 
     @Test
