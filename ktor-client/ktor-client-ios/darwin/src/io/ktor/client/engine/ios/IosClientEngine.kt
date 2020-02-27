@@ -21,6 +21,7 @@ internal class IosClientEngine(override val config: IosClientEngineConfig) : Htt
         val callContext = callContext()
         val responseReader = IosResponseReader(callContext)
 
+
         val configuration = NSURLSessionConfiguration.defaultSessionConfiguration().apply {
             setupProxy(config)
             config.sessionConfig(this)

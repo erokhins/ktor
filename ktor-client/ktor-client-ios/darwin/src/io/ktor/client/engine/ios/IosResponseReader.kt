@@ -35,14 +35,18 @@ internal class IosResponseReader(
             headersDict.mapKeys { (key, value) -> append(key, value) }
         }
 
-        val responseBody = GlobalScope.writer(Dispatchers.Unconfined, autoFlush = true) {
+        val responseBody = GlobalScope.writer(callContext + Dispatchers.Unconfined, autoFlush = true) {
             try {
                 chunks.consumeEach {
                     channel.writeFully(it)
                     channel.flush()
                 }
             } catch (cause: CancellationException) {
+                println("CANCELLATION: $channel")
                 chunks.cancel(cause)
+            } catch (cause: Throwable) {
+                println("FOO: $cause")
+                throw cause
             }
         }.channel
 
@@ -69,10 +73,10 @@ internal class IosResponseReader(
     }
 
     override fun URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError: NSError?) {
-        chunks.close()
-
         if (didCompleteWithError != null) {
-            rawResponse.completeExceptionally(IosHttpRequestException(didCompleteWithError))
+            val exception = IosHttpRequestException(didCompleteWithError)
+            chunks.close(exception)
+            rawResponse.completeExceptionally(exception)
             return
         }
 
@@ -80,6 +84,8 @@ internal class IosResponseReader(
             val response = task.response as NSHTTPURLResponse
             rawResponse.complete(response)
         }
+
+        chunks.close()
     }
 
     override fun URLSession(
